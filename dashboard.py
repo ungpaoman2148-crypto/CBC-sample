@@ -1,6 +1,5 @@
 # dashboard.py — แดชบอร์ดผู้สมัครชมรม (สร้างด้วย Streamlit)
 # วิธีรัน:  python -m streamlit run dashboard.py
-# ต้องลงก่อน: python -m pip install streamlit pandas plotly
 
 import streamlit as st
 import pandas as pd
@@ -14,7 +13,8 @@ PURPLE  = "#534AB7"
 BLUE    = "#378ADD"
 PALETTE = ["#1D9E75", "#534AB7", "#378ADD", "#D85A30"]
 
-@st.cache_data
+# ---------- 1) โหลดข้อมูล (แคชแบบมีวันหมดอายุ ป้องกันข้อมูลค้าง) ----------
+@st.cache_data(ttl=60)  # แคชอยู่ได้ 60 วินาที แล้วจะไปดึงข้อมูลใหม่จาก Supabase อัตโนมัติ
 def load_data():
     url = st.secrets["SUPABASE_URL"]
     key = st.secrets["SUPABASE_KEY"]
@@ -22,13 +22,20 @@ def load_data():
     res = supabase.table("applicants").select("*").execute()
     return pd.DataFrame(res.data)
 
+# ---------- 2) หัวเรื่อง + ปุ่มรีเฟรชข้อมูล ----------
+title_col, refresh_col = st.columns([6, 1])
+with title_col:
+    st.title("ภาพรวมผู้สมัครชมรม")
+    st.caption("ข้อมูลตัวอย่าง · แดชบอร์ดสร้างด้วย Streamlit + Plotly")
+with refresh_col:
+    st.write("")  # ดันปุ่มให้อยู่แนวเดียวกับหัวเรื่อง
+    if st.button("🔄 รีเฟรชข้อมูล"):
+        st.cache_data.clear()   # ล้างแคชทั้งหมด บังคับให้ดึงข้อมูลใหม่
+        st.rerun()
+
 df = load_data()
 
-# ---------- 3) หัวเรื่อง ----------
-st.title("ภาพรวมผู้สมัครชมรม")
-st.caption("ข้อมูลตัวอย่าง · แดชบอร์ดสร้างด้วย Streamlit + Plotly")
-
-# ---------- 4) Sidebar: ตัวกรองข้อมูล ----------
+# ---------- 3) Sidebar: ตัวกรองข้อมูล ----------
 st.sidebar.header("ตัวกรองข้อมูล")
 
 all_faculties = sorted(df["faculty"].unique())
@@ -40,7 +47,7 @@ sel_year = st.sidebar.multiselect("เลือกชั้นปี", all_years
 
 st.sidebar.caption("เลือกตัวกรองแล้วกราฟทุกอันจะอัปเดตตามทันที")
 
-# ---------- 5) กรองข้อมูลตามที่เลือก ----------
+# ---------- 4) กรองข้อมูลตามที่เลือก ----------
 dff = df[df["faculty"].isin(sel_fac) & df["year"].isin(sel_year)]
 
 # ถ้ากรองจนไม่เหลือข้อมูล ให้แจ้งเตือนแล้วหยุด
@@ -48,7 +55,7 @@ if dff.empty:
     st.warning("ไม่มีข้อมูลตามตัวกรองที่เลือก — ลองเลือกใหม่อีกครั้ง")
     st.stop()
 
-# ---------- 6) แถวตัวเลขสรุป (KPI) ----------
+# ---------- 5) แถวตัวเลขสรุป (KPI) ----------
 k1, k2, k3, k4 = st.columns(4)
 k1.metric("ผู้สมัครทั้งหมด", f"{len(dff)} คน")
 k2.metric("จำนวนคณะ", dff["faculty"].nunique())
@@ -57,7 +64,7 @@ k4.metric("ปรึกษาบ่อยสุด", dff["topic"].value_counts()
 
 st.divider()
 
-# ---------- 7) แถวกราฟที่ 1: คณะ + ชั้นปี ----------
+# ---------- 6) แถวกราฟที่ 1: คณะ + ชั้นปี ----------
 c1, c2 = st.columns(2)
 
 with c1:
@@ -80,7 +87,7 @@ with c2:
     fig.update_layout(height=360, margin=dict(l=0, r=0, t=10, b=0))
     st.plotly_chart(fig, use_container_width=True)
 
-# ---------- 8) แถวกราฟที่ 2: เรื่องที่ปรึกษา + ช่องทาง ----------
+# ---------- 7) แถวกราฟที่ 2: เรื่องที่ปรึกษา + ช่องทาง ----------
 c3, c4 = st.columns(2)
 
 with c3:
@@ -102,7 +109,7 @@ with c4:
     fig.update_layout(height=360, margin=dict(l=0, r=0, t=10, b=0))
     st.plotly_chart(fig, use_container_width=True)
 
-# ---------- 9) กราฟแนวโน้มยอดสมัครรายเดือน ----------
+# ---------- 8) กราฟแนวโน้มยอดสมัครรายเดือน ----------
 st.subheader("ยอดสมัครรายเดือน")
 d = dff["apply_month"].value_counts().sort_index().reset_index()
 d.columns = ["เดือน", "จำนวน"]
@@ -111,8 +118,8 @@ fig = px.line(d, x="เดือน", y="จำนวน", markers=True,
 fig.update_layout(height=320, margin=dict(l=0, r=0, t=10, b=0))
 st.plotly_chart(fig, use_container_width=True)
 
-# ---------- 10) ตารางข้อมูลดิบ (ซ่อนไว้ กดเปิดได้) ----------
+# ---------- 9) ตารางข้อมูลดิบ (ซ่อนไว้ กดเปิดได้) ----------
 with st.expander("ดูตารางข้อมูลทั้งหมด"):
     st.dataframe(dff, use_container_width=True)
 
-st.caption("สร้างโดย [ใส่ชื่อคุณ] · สมัครทีม Data — Coach by CBAF")
+st.caption("สร้างโดย [pao] · สมัครทีม Data — Coach by CBAF")
